@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
+using System.Reflection;
 using System.Text;
 using System.Threading;
 using MelonLoader;
@@ -14,16 +15,16 @@ namespace VRCFT_Module___LiveLink
     // Example "single-eye" data response.
     public struct LiveLinkTrackingDataEye
     {
-        public float eyeBlink;
-        public float eyeLookDown;
-        public float eyeLookIn;
-        public float eyeLookOut;
-        public float eyeLookUp;
-        public float eyeSquint;
-        public float eyeWide;
-        public float eyePitch;
-        public float eyeYaw;
-        public float eyeRoll;
+        public float EyeBlink;
+        public float EyeLookDown;
+        public float EyeLookIn;
+        public float EyeLookOut;
+        public float EyeLookUp;
+        public float EyeSquint;
+        public float EyeWide;
+        public float EyePitch;
+        public float EyeYaw;
+        public float EyeRoll;
     }
 
     public struct LiveLinkTrackingDataLips
@@ -87,13 +88,15 @@ namespace VRCFT_Module___LiveLink
         // This function parses the external module's single-eye data into a VRCFT-Parseable format
         public static void Update(this Eye data, LiveLinkTrackingDataEye external)
         {
-            data.Look = new Vector2(external.eyeYaw, external.eyePitch);
-            data.Openness = external.eyeBlink;
+            data.Look = new Vector2(external.EyeYaw, external.EyePitch);
+            data.Openness = external.EyeBlink;
         }
 
         // This function parses the external module's full-data data into multiple VRCFT-Parseable single-eye structs
         public static void Update(this EyeTrackingData data, LiveLinkTrackingDataStruct external)
         {
+            if (!UnifiedLibManager.EyeEnabled) return;
+            MelonLogger.Msg("Left Eye Blink: " + external.left_eye.EyeBlink);
             data.Right.Update(external.left_eye);
             data.Left.Update(external.right_eye);
         }
@@ -173,6 +176,7 @@ namespace VRCFT_Module___LiveLink
         {
             MelonLogger.Msg("Initializing Live Link Tracking module");
             _cancellationToken?.Cancel();
+            UnifiedTrackingData.LatestEyeData.SupportsImage = false;
             liveLinkConnection = new UdpClient(42069);
             liveLinkRemoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
             ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
@@ -196,8 +200,20 @@ namespace VRCFT_Module___LiveLink
         // The update function needs to be defined separately in case the user is running with the --vrcft-nothread launch parameter
         public void Update()
         {
-            ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
-            MelonLogger.Msg("LiveLLink Update");
+            LiveLinkTrackingDataStruct newData = ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
+            //TrackingData.Update(UnifiedTrackingData.LatestEyeData, newData);
+
+            UnifiedTrackingData.LatestEyeData.Combined.Look = new Vector2((newData.left_eye.EyeYaw + newData.right_eye.EyeYaw)/2, (newData.left_eye.EyePitch + newData.right_eye.EyePitch)/-2);
+            
+            UnifiedTrackingData.LatestEyeData.Left.Openness = newData.left_eye.EyeBlink;
+            UnifiedTrackingData.LatestEyeData.Left.Widen = newData.left_eye.EyeWide;
+            //UnifiedTrackingData.LatestEyeData.Left.Squeeze = newData.left_eye.EyeSquint;
+
+            UnifiedTrackingData.LatestEyeData.Right.Openness = newData.right_eye.EyeBlink;
+            UnifiedTrackingData.LatestEyeData.Right.Widen = newData.right_eye.EyeWide;
+            //UnifiedTrackingData.LatestEyeData.Right.Squeeze = newData.right_eye.EyeSquint;
+
+            //MelonLogger.Msg("LiveLLink Update");
         }
 
         // A chance to de-initialize everything. This runs synchronously inside main game thread. Do not touch any Unity objects here.
@@ -235,21 +251,21 @@ namespace VRCFT_Module___LiveLink
                     values.Add(LiveLinkNames[item.i], BitConverter.ToSingle(item.value.ToArray(), 0));
                 }
 
-                var lines = values.Select(kvp => kvp.Key + ": " + kvp.Value.ToString());
+                //var lines = values.Select(kvp => kvp.Key + ": " + kvp.Value.ToString());
 
-                MelonLogger.Msg("This is the message you received " +
-                               string.Join(Environment.NewLine, lines));
-                MelonLogger.Msg("This message was sent from " +
-                                            liveLinkRemoteEndpoint.Address.ToString() +
-                                            " on their port number " +
-                                            liveLinkRemoteEndpoint.Port.ToString());
+                //MelonLogger.Msg("This is the message you received " +
+                //               string.Join(Environment.NewLine, lines));
+                //MelonLogger.Msg("This message was sent from " +
+                //                            liveLinkRemoteEndpoint.Address.ToString() +
+                //                            " on their port number " +
+                //                            liveLinkRemoteEndpoint.Port.ToString());
             }
             catch (Exception e)
             {
                 MelonLogger.Msg(e.ToString());
             }
 
-            if (values.Count == 60)
+            if (values.Count() == 61)
             {  
                 return ProcessData(values);
             }
@@ -261,7 +277,54 @@ namespace VRCFT_Module___LiveLink
 
         private LiveLinkTrackingDataStruct ProcessData(Dictionary<string, float> values)
         {
-            return new LiveLinkTrackingDataStruct();
+            LiveLinkTrackingDataStruct processedData = new LiveLinkTrackingDataStruct();
+            foreach (var field in typeof(LiveLinkTrackingDataEye).GetFields(BindingFlags.Instance |
+                                                                            BindingFlags.NonPublic |
+                                                                            BindingFlags.Public))
+            {
+                string leftName, rightName = "";
+                if (field.Name.Contains("Pitch") || field.Name.Contains("Yaw") || field.Name.Contains("Roll"))
+                {
+                    leftName = "Left" + field.Name;
+                    rightName = "Right" + field.Name;
+                }
+                else
+                {
+                    leftName = field.Name + "Left";
+                    rightName = field.Name + "Right";
+                }
+                object tempLeft = processedData.left_eye;
+                object tempRight = processedData.right_eye;
+                field.SetValue(tempLeft, values[leftName]);
+                field.SetValue(tempRight, values[rightName]);
+                processedData.left_eye = (LiveLinkTrackingDataEye)tempLeft;
+                processedData.right_eye = (LiveLinkTrackingDataEye)tempRight;
+            }
+
+            //object temp = processedData.left_eye;
+            //var field = typeof(LiveLinkTrackingDataEye).GetField("EyeBlink", BindingFlags.Instance |
+            //                                                                 BindingFlags.NonPublic |
+            //                                                                 BindingFlags.Public);
+            //field.SetValue(temp, values["EyeBlinkLeft"]);
+            //processedData.left_eye = (LiveLinkTrackingDataEye)temp;
+            //field.SetValue(processedData.left_eye, values["EyeBlinkLeft"]);
+            //processedData.left_eye.EyeBlink = values["EyeBlinkLeft"];
+
+            //foreach (var field in typeof(LiveLinkTrackingDataLips).GetFields(BindingFlags.Instance |
+            //                                                                BindingFlags.NonPublic |
+            //                                                                BindingFlags.Public))
+            //{
+            //    field.SetValue(processedData.lips, values[field.Name]);
+            //}
+
+            //foreach (var field in typeof(LiveLinkTrackingDataBrow).GetFields(BindingFlags.Instance |
+            //                                                    BindingFlags.NonPublic |
+            //                                                    BindingFlags.Public))
+            //{
+            //    field.SetValue(processedData.brow, values[field.Name]);
+            //}
+
+            return processedData;
         }
     }
 }
