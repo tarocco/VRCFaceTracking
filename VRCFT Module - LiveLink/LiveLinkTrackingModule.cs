@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Text;
 using System.Threading;
 using MelonLoader;
+using ViveSR.anipal.Lip;
 using VRCFaceTracking;
 using VRCFaceTracking.Params;
 
@@ -213,6 +214,48 @@ namespace VRCFT_Module___LiveLink
             UnifiedTrackingData.LatestEyeData.Right.Widen = newData.right_eye.EyeWide;
             //UnifiedTrackingData.LatestEyeData.Right.Squeeze = newData.right_eye.EyeSquint;
 
+
+            Dictionary<LipShape_v2, float> lipShapes = new Dictionary<LipShape_v2, float>{
+                { LipShape_v2.JawRight, newData.lips.JawRight }, // +JawX
+                { LipShape_v2.JawLeft, newData.lips.JawLeft }, // -JawX
+                { LipShape_v2.JawForward, newData.lips.JawForward },
+                { LipShape_v2.JawOpen, newData.lips.JawOpen },
+                { LipShape_v2.MouthApeShape, 0 },
+                { LipShape_v2.MouthUpperRight, newData.lips.MouthRight }, // +MouthUpper
+                { LipShape_v2.MouthUpperLeft, newData.lips.MouthLeft }, // -MouthUpper
+                { LipShape_v2.MouthLowerRight, newData.lips.MouthRight }, // +MouthLower
+                { LipShape_v2.MouthLowerLeft, newData.lips.MouthLeft }, // -MouthLower
+                { LipShape_v2.MouthUpperOverturn, newData.lips.MouthShrugUpper },
+                { LipShape_v2.MouthLowerOverturn, newData.lips.MouthShrugLower },
+                { LipShape_v2.MouthPout, 0 },
+                { LipShape_v2.MouthSmileRight, newData.lips.MouthSmileRight }, // +SmileSadRight
+                { LipShape_v2.MouthSmileLeft, newData.lips.MouthSmileLeft }, // +SmileSadLeft
+                { LipShape_v2.MouthSadRight, newData.lips.MouthFrownRight }, // -SmileSadRight
+                { LipShape_v2.MouthSadLeft, newData.lips.MouthFrownLeft }, // -SmileSadLeft
+                { LipShape_v2.CheekPuffRight, newData.lips.CheekPuff },
+                { LipShape_v2.CheekPuffLeft, newData.lips.CheekPuff },
+                { LipShape_v2.CheekSuck, 0 },
+                { LipShape_v2.MouthUpperUpRight, newData.lips.MouthUpperUpRight },
+                { LipShape_v2.MouthUpperUpLeft, newData.lips.MouthUpperUpLeft },
+                { LipShape_v2.MouthLowerDownRight, newData.lips.MouthLowerDownRight },
+                { LipShape_v2.MouthLowerDownLeft, newData.lips.MouthLowerDownLeft },
+                { LipShape_v2.MouthUpperInside, newData.lips.MouthRollUpper },
+                { LipShape_v2.MouthLowerInside, newData.lips.MouthRollLower },
+                { LipShape_v2.MouthLowerOverlay, 0 },
+                { LipShape_v2.TongueLongStep1, newData.lips.TongueOut },
+                { LipShape_v2.TongueLongStep2, newData.lips.TongueOut },
+                { LipShape_v2.TongueDown, 0 }, // -TongueY
+                { LipShape_v2.TongueUp, 0 }, // +TongueY
+                { LipShape_v2.TongueRight, 0 }, // +TongueX
+                { LipShape_v2.TongueLeft, 0 }, // -TongueX
+                { LipShape_v2.TongueRoll, 0 },
+                { LipShape_v2.TongueUpLeftMorph, 0 },
+                { LipShape_v2.TongueUpRightMorph, 0 },
+                { LipShape_v2.TongueDownLeftMorph, 0 },
+                { LipShape_v2.TongueDownRightMorph, 0 },
+            };
+            UnifiedTrackingData.LatestLipShapes = lipShapes;
+
             //MelonLogger.Msg("LiveLLink Update");
         }
 
@@ -301,28 +344,23 @@ namespace VRCFT_Module___LiveLink
                 processedData.right_eye = (LiveLinkTrackingDataEye)tempRight;
             }
 
-            //object temp = processedData.left_eye;
-            //var field = typeof(LiveLinkTrackingDataEye).GetField("EyeBlink", BindingFlags.Instance |
-            //                                                                 BindingFlags.NonPublic |
-            //                                                                 BindingFlags.Public);
-            //field.SetValue(temp, values["EyeBlinkLeft"]);
-            //processedData.left_eye = (LiveLinkTrackingDataEye)temp;
-            //field.SetValue(processedData.left_eye, values["EyeBlinkLeft"]);
-            //processedData.left_eye.EyeBlink = values["EyeBlinkLeft"];
+            foreach (var field in typeof(LiveLinkTrackingDataLips).GetFields(BindingFlags.Instance |
+                                                                            BindingFlags.NonPublic |
+                                                                            BindingFlags.Public))
+            {
+                object temp = processedData.lips;
+                field.SetValue(temp, values[field.Name]);
+                processedData.lips = (LiveLinkTrackingDataLips)temp;
+            }
 
-            //foreach (var field in typeof(LiveLinkTrackingDataLips).GetFields(BindingFlags.Instance |
-            //                                                                BindingFlags.NonPublic |
-            //                                                                BindingFlags.Public))
-            //{
-            //    field.SetValue(processedData.lips, values[field.Name]);
-            //}
-
-            //foreach (var field in typeof(LiveLinkTrackingDataBrow).GetFields(BindingFlags.Instance |
-            //                                                    BindingFlags.NonPublic |
-            //                                                    BindingFlags.Public))
-            //{
-            //    field.SetValue(processedData.brow, values[field.Name]);
-            //}
+            foreach (var field in typeof(LiveLinkTrackingDataBrow).GetFields(BindingFlags.Instance |
+                                                                BindingFlags.NonPublic |
+                                                                BindingFlags.Public))
+            {
+                object temp = processedData.brow;
+                field.SetValue(processedData.brow, values[field.Name]);
+                processedData.brow = (LiveLinkTrackingDataBrow)temp;
+            }
 
             return processedData;
         }
