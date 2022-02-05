@@ -1,7 +1,11 @@
 ﻿using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Text;
+using System.Threading;
+using MelonLoader;
 using VRCFaceTracking;
 using VRCFaceTracking.Params;
 
@@ -54,7 +58,18 @@ namespace VRCFT_Module___LiveLink
         public float CheekPuff;
         public float CheekSquintLeft;
         public float CheekSquintRight;
+        public float NoseSneerLeft;
+        public float NoseSneerRight;
         public float TongueOut;
+    }
+
+    public struct LiveLinkTrackingDataBrow
+    {
+        public float BrowDownLeft;
+        public float BrowDownRight;
+        public float BrowInnerUp;
+        public float BrowOuterUpLeft;
+        public float BrowOuterUpRight;
     }
 
     // Example "full-data" response from the external tracking system.
@@ -63,6 +78,7 @@ namespace VRCFT_Module___LiveLink
         public LiveLinkTrackingDataEye left_eye;
         public LiveLinkTrackingDataEye right_eye;
         public LiveLinkTrackingDataLips lips;
+        public LiveLinkTrackingDataBrow brow;
     }
 
     // This class contains the overrides for any VRCFT Tracking Data struct functions
@@ -82,7 +98,7 @@ namespace VRCFT_Module___LiveLink
             data.Left.Update(external.right_eye);
         }
     }
-    public class LiveLinkTrackingModule
+    public class LiveLinkTrackingModule : ITrackingModule
     {
         public static readonly string[] LiveLinkNames = {
             "EyeBlinkLeft",
@@ -147,13 +163,16 @@ namespace VRCFT_Module___LiveLink
             "RightEyePitch",
             "RightEyeRoll"};
 
+        private static CancellationTokenSource _cancellationToken;
+
         public UdpClient liveLinkConnection;
         public IPEndPoint liveLinkRemoteEndpoint;
 
         // Synchronous module initialization. Take as much time as you need to initialize any external modules. This runs in the init-thread
         public (bool eyeSuccess, bool lipSuccess) Initialize(bool eye, bool lip)
         {
-            Console.WriteLine("Initializing Live Link Tracking module");
+            MelonLogger.Msg("Initializing Live Link Tracking module");
+            _cancellationToken?.Cancel();
             liveLinkConnection = new UdpClient(42069);
             liveLinkRemoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
             ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
@@ -163,21 +182,31 @@ namespace VRCFT_Module___LiveLink
         // This will be run in the tracking thread. This is exposed so you can control when and if the tracking data is updated down to the lowest level.
         public Action GetUpdateThreadFunc()
         {
-            return Update;
+            _cancellationToken = new CancellationTokenSource();
+            return () =>
+            {
+                while (!_cancellationToken.IsCancellationRequested)
+                {
+                    Update();
+                    Thread.Sleep(10);
+                }
+            };
         }
 
         // The update function needs to be defined separately in case the user is running with the --vrcft-nothread launch parameter
         public void Update()
         {
             ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
-            Console.WriteLine("LLUpdate");
+            MelonLogger.Msg("LiveLLink Update");
         }
 
         // A chance to de-initialize everything. This runs synchronously inside main game thread. Do not touch any Unity objects here.
         public void Teardown()
         {
+            _cancellationToken.Cancel();
+            _cancellationToken.Dispose();
             liveLinkConnection.Close();
-            Console.WriteLine("LLTeardown");
+            MelonLogger.Msg("LiveLink Teardown");
         }
 
         public bool SupportsEye => true;
@@ -185,22 +214,53 @@ namespace VRCFT_Module___LiveLink
 
         private LiveLinkTrackingDataStruct ReadData(UdpClient liveLinkConnection, IPEndPoint liveLinkRemoteEndpoint)
         {
+            Dictionary<string, float> values = new Dictionary<string, float>();
+
             try
             {
                 Byte[] recieveBytes = liveLinkConnection.Receive(ref liveLinkRemoteEndpoint);
-                string returnData = Encoding.ASCII.GetString(recieveBytes);
 
-                Console.WriteLine("This is the message you received " +
-                               returnData.ToString());
-                Console.WriteLine("This message was sent from " +
+                IEnumerable<Byte> trimmedBytes = recieveBytes.Skip(Math.Max(0, recieveBytes.Count() - 244));
+
+                List<List<Byte>> chunkedBytes = trimmedBytes
+                    .Select((x, i) => new { Index = i, Value = x })
+                    .GroupBy(x => x.Index / 4)
+                    .Select(x => x.Select(v => v.Value).ToList())
+                    .ToList();
+
+                
+                foreach (var item in chunkedBytes.Select((value, i) => new { i, value }))
+                {
+                    item.value.Reverse();
+                    values.Add(LiveLinkNames[item.i], BitConverter.ToSingle(item.value.ToArray(), 0));
+                }
+
+                var lines = values.Select(kvp => kvp.Key + ": " + kvp.Value.ToString());
+
+                MelonLogger.Msg("This is the message you received " +
+                               string.Join(Environment.NewLine, lines));
+                MelonLogger.Msg("This message was sent from " +
                                             liveLinkRemoteEndpoint.Address.ToString() +
                                             " on their port number " +
                                             liveLinkRemoteEndpoint.Port.ToString());
             }
             catch (Exception e)
             {
-                Console.WriteLine(e.ToString());
+                MelonLogger.Msg(e.ToString());
             }
+
+            if (values.Count == 60)
+            {  
+                return ProcessData(values);
+            }
+            else
+            {
+                return new LiveLinkTrackingDataStruct();
+            }
+        }
+
+        private LiveLinkTrackingDataStruct ProcessData(Dictionary<string, float> values)
+        {
             return new LiveLinkTrackingDataStruct();
         }
     }
