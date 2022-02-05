@@ -1,0 +1,16 @@
+{
+  "Version": 1,
+  "ProjectMap": {
+    "0767c09e-d536-464b-b0a1-46d5bfa19e98": {
+      "ProjectGuid": "0767c09e-d536-464b-b0a1-46d5bfa19e98",
+      "DisplayName": "VRCFaceTracking",
+      "ColorIndex": 0
+    },
+    "296110e5-3ae7-4d9f-be09-890194cdd76e": {
+      "ProjectGuid": "296110e5-3ae7-4d9f-be09-890194cdd76e",
+      "DisplayName": "VRCFT Module Example",
+      "ColorIndex": 1
+    }
+  },
+  "NextColorIndex": 2
+}
