@@ -4,7 +4,6 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
-using System.Text;
 using System.Threading;
 using MelonLoader;
 using ViveSR.anipal.Lip;
@@ -13,7 +12,7 @@ using VRCFaceTracking.Params;
 
 namespace VRCFT_Module___LiveLink
 {
-    // Example "single-eye" data response.
+    // Live Link Single-Eye tracking data
     public struct LiveLinkTrackingDataEye
     {
         public float EyeBlink;
@@ -28,6 +27,7 @@ namespace VRCFT_Module___LiveLink
         public float EyeRoll;
     }
 
+    // Live Link lip tracking data
     public struct LiveLinkTrackingDataLips
     {
         public float JawForward;
@@ -65,6 +65,7 @@ namespace VRCFT_Module___LiveLink
         public float TongueOut;
     }
 
+    // Live Link brow tracking data
     public struct LiveLinkTrackingDataBrow
     {
         public float BrowDownLeft;
@@ -74,7 +75,7 @@ namespace VRCFT_Module___LiveLink
         public float BrowOuterUpRight;
     }
 
-    // Example "full-data" response from the external tracking system.
+    // All Live Link tracking data
     public struct LiveLinkTrackingDataStruct
     {
         public LiveLinkTrackingDataEye left_eye;
@@ -84,6 +85,8 @@ namespace VRCFT_Module___LiveLink
     }
 
     // This class contains the overrides for any VRCFT Tracking Data struct functions
+    // This class is unusead right now, probably a much better idea to move what I'm doing in LiveLinkTrackinModule.Update
+    // to here.
     public static class TrackingData
     {
         // This function parses the external module's single-eye data into a VRCFT-Parseable format
@@ -104,6 +107,8 @@ namespace VRCFT_Module___LiveLink
     }
     public class LiveLinkTrackingModule : ITrackingModule
     {
+        // The proper names of each ARKit blendshape (Note most eyes are "Eye___[Left/Right]" while
+        // pitch/yaw/roll are "[Left/Right]Eye___")
         public static readonly string[] LiveLinkNames = {
             "EyeBlinkLeft",
             "EyeLookDownLeft",
@@ -172,7 +177,7 @@ namespace VRCFT_Module___LiveLink
         public UdpClient liveLinkConnection;
         public IPEndPoint liveLinkRemoteEndpoint;
 
-        // Synchronous module initialization. Take as much time as you need to initialize any external modules. This runs in the init-thread
+        // Starts listening on port 42069 and waits for the first packet to come in to initialize
         public (bool eyeSuccess, bool lipSuccess) Initialize(bool eye, bool lip)
         {
             MelonLogger.Msg("Initializing Live Link Tracking module");
@@ -184,7 +189,7 @@ namespace VRCFT_Module___LiveLink
             return (true, true);
         }
 
-        // This will be run in the tracking thread. This is exposed so you can control when and if the tracking data is updated down to the lowest level.
+        // Update the face pose every 10ms, this is the same frequency that Pimax and SRanipal use
         public Action GetUpdateThreadFunc()
         {
             _cancellationToken = new CancellationTokenSource();
@@ -199,22 +204,31 @@ namespace VRCFT_Module___LiveLink
         }
 
         // The update function needs to be defined separately in case the user is running with the --vrcft-nothread launch parameter
+        // Currently doing all data processing in this Update function, should probably move into TrackingData
         public void Update()
         {
             LiveLinkTrackingDataStruct newData = ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
             //TrackingData.Update(UnifiedTrackingData.LatestEyeData, newData);
 
-            UnifiedTrackingData.LatestEyeData.Combined.Look = new Vector2((newData.left_eye.EyeYaw + newData.right_eye.EyeYaw)/2, (newData.left_eye.EyePitch + newData.right_eye.EyePitch)/-2);
-            
-            UnifiedTrackingData.LatestEyeData.Left.Openness = newData.left_eye.EyeBlink;
+            // Combined eye tracking
+            UnifiedTrackingData.LatestEyeData.Combined.Look = new Vector2((newData.left_eye.EyeYaw + newData.right_eye.EyeYaw) / 2, (newData.left_eye.EyePitch + newData.right_eye.EyePitch) / -2);
+            UnifiedTrackingData.LatestEyeData.Combined.Openness = (newData.left_eye.EyeBlink + newData.right_eye.EyeBlink) / -2;
+            UnifiedTrackingData.LatestEyeData.Combined.Widen = (newData.left_eye.EyeWide + newData.right_eye.EyeWide) / 2;
+            //UnifiedTrackingData.LatestEyeData.Combined.Squeeze = (newData.left_eye.EyeSquint + newData.right_eye.EyeSquint)/2;
+
+            // Left eye tracking
+            UnifiedTrackingData.LatestEyeData.Left.Look = new Vector2(newData.left_eye.EyeYaw, -1 * newData.left_eye.EyePitch);
+            UnifiedTrackingData.LatestEyeData.Left.Openness = -1*newData.left_eye.EyeBlink;
             UnifiedTrackingData.LatestEyeData.Left.Widen = newData.left_eye.EyeWide;
             //UnifiedTrackingData.LatestEyeData.Left.Squeeze = newData.left_eye.EyeSquint;
 
-            UnifiedTrackingData.LatestEyeData.Right.Openness = newData.right_eye.EyeBlink;
+            // Right eye tracking
+            UnifiedTrackingData.LatestEyeData.Right.Look = new Vector2(newData.right_eye.EyeYaw, -1 * newData.right_eye.EyePitch);
+            UnifiedTrackingData.LatestEyeData.Right.Openness = -1*newData.right_eye.EyeBlink;
             UnifiedTrackingData.LatestEyeData.Right.Widen = newData.right_eye.EyeWide;
             //UnifiedTrackingData.LatestEyeData.Right.Squeeze = newData.right_eye.EyeSquint;
 
-
+            // Lip tracking
             Dictionary<LipShape_v2, float> lipShapes = new Dictionary<LipShape_v2, float>{
                 { LipShape_v2.JawRight, newData.lips.JawRight }, // +JawX
                 { LipShape_v2.JawLeft, newData.lips.JawLeft }, // -JawX
@@ -254,9 +268,10 @@ namespace VRCFT_Module___LiveLink
                 { LipShape_v2.TongueDownLeftMorph, 0 },
                 { LipShape_v2.TongueDownRightMorph, 0 },
             };
-            UnifiedTrackingData.LatestLipShapes = lipShapes;
 
-            //MelonLogger.Msg("LiveLLink Update");
+            // Brow tracking??
+
+            UnifiedTrackingData.LatestLipShapes = lipShapes;
         }
 
         // A chance to de-initialize everything. This runs synchronously inside main game thread. Do not touch any Unity objects here.
@@ -271,31 +286,37 @@ namespace VRCFT_Module___LiveLink
         public bool SupportsEye => true;
         public bool SupportsLip => true;
 
+        // Read the data from the LiveLink UDP stream and place it into a LiveLinkTrackingDataStruct
         private LiveLinkTrackingDataStruct ReadData(UdpClient liveLinkConnection, IPEndPoint liveLinkRemoteEndpoint)
         {
             Dictionary<string, float> values = new Dictionary<string, float>();
 
             try
             {
+                // Grab the packet
                 Byte[] recieveBytes = liveLinkConnection.Receive(ref liveLinkRemoteEndpoint);
 
+                // There is a bunch of static data at the beginning of the packet, is may be variable length because it includes phone name
+                // So grab the last 244 bytes of the packet sent using some Linq magic, since that's where our blendshapes live
                 IEnumerable<Byte> trimmedBytes = recieveBytes.Skip(Math.Max(0, recieveBytes.Count() - 244));
 
+                // More Linq magic, this splits our 244 bytes into 61, 4-byte chunks which we can then turn into floats
                 List<List<Byte>> chunkedBytes = trimmedBytes
                     .Select((x, i) => new { Index = i, Value = x })
                     .GroupBy(x => x.Index / 4)
                     .Select(x => x.Select(v => v.Value).ToList())
                     .ToList();
 
-                
+                // Process each float in out chunked out list
                 foreach (var item in chunkedBytes.Select((value, i) => new { i, value }))
                 {
+                    // First, reverse the list because the data will be in big endian, then convert it to a float
                     item.value.Reverse();
                     values.Add(LiveLinkNames[item.i], BitConverter.ToSingle(item.value.ToArray(), 0));
                 }
 
+                //// Logging to spam console with each blendshape every update
                 //var lines = values.Select(kvp => kvp.Key + ": " + kvp.Value.ToString());
-
                 //MelonLogger.Msg("This is the message you received " +
                 //               string.Join(Environment.NewLine, lines));
                 //MelonLogger.Msg("This message was sent from " +
@@ -308,23 +329,31 @@ namespace VRCFT_Module___LiveLink
                 MelonLogger.Msg(e.ToString());
             }
 
+            // Check that we got all 61 values before we go processing things
             if (values.Count() == 61)
             {  
                 return ProcessData(values);
             }
             else
             {
+                // If tracking cuts out, it might be a good idea for it to just freeze in place instead of everything getting set to
+                // an empty struct
                 return new LiveLinkTrackingDataStruct();
             }
         }
 
+        // This is all terrible, I am almost certain that there is no need to use relfection for any of this
         private LiveLinkTrackingDataStruct ProcessData(Dictionary<string, float> values)
         {
             LiveLinkTrackingDataStruct processedData = new LiveLinkTrackingDataStruct();
+
+            // For eacch of the eye tracking blendshapes
             foreach (var field in typeof(LiveLinkTrackingDataEye).GetFields(BindingFlags.Instance |
                                                                             BindingFlags.NonPublic |
                                                                             BindingFlags.Public))
             {
+                // Eye pitch, yaw, and roll have left/right at the start while all other eye fields have them at the end for some reason.
+                // I could just rename my blendshapes to make this a lot easier but I wanted them to still match ARKit names
                 string leftName, rightName = "";
                 if (field.Name.Contains("Pitch") || field.Name.Contains("Yaw") || field.Name.Contains("Roll"))
                 {
@@ -336,6 +365,8 @@ namespace VRCFT_Module___LiveLink
                     leftName = field.Name + "Left";
                     rightName = field.Name + "Right";
                 }
+
+                // Values have to be boxed before they're set otherwise it won't actually get written
                 object tempLeft = processedData.left_eye;
                 object tempRight = processedData.right_eye;
                 field.SetValue(tempLeft, values[leftName]);
@@ -344,19 +375,23 @@ namespace VRCFT_Module___LiveLink
                 processedData.right_eye = (LiveLinkTrackingDataEye)tempRight;
             }
 
+            // For each of the lip tracking blendshapes
             foreach (var field in typeof(LiveLinkTrackingDataLips).GetFields(BindingFlags.Instance |
                                                                             BindingFlags.NonPublic |
                                                                             BindingFlags.Public))
             {
+                // Box them and set them
                 object temp = processedData.lips;
                 field.SetValue(temp, values[field.Name]);
                 processedData.lips = (LiveLinkTrackingDataLips)temp;
             }
 
+            // For each of the brow tracking blendshapes
             foreach (var field in typeof(LiveLinkTrackingDataBrow).GetFields(BindingFlags.Instance |
                                                                 BindingFlags.NonPublic |
                                                                 BindingFlags.Public))
             {
+                // Box them and set them
                 object temp = processedData.brow;
                 field.SetValue(processedData.brow, values[field.Name]);
                 processedData.brow = (LiveLinkTrackingDataBrow)temp;
