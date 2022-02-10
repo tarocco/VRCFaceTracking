@@ -173,17 +173,21 @@ namespace VRCFT_Module___LiveLink
             "RightEyeRoll"};
 
         private static CancellationTokenSource _cancellationToken;
+        private static MelonPreferences_Category liveLinkCategory;
+        private static MelonPreferences_Entry<int> liveLinkPort;
 
         public UdpClient liveLinkConnection;
         public IPEndPoint liveLinkRemoteEndpoint;
 
-        // Starts listening on port 42069 and waits for the first packet to come in to initialize
+        // Starts listening and waits for the first packet to come in to initialize
         public (bool eyeSuccess, bool lipSuccess) Initialize(bool eye, bool lip)
         {
             MelonLogger.Msg("Initializing Live Link Tracking module");
+            liveLinkCategory = MelonPreferences.CreateCategory("VRCFT LiveLink");
+            liveLinkPort = liveLinkCategory.CreateEntry("LiveLinkPort", 11111);
             _cancellationToken?.Cancel();
             UnifiedTrackingData.LatestEyeData.SupportsImage = false;
-            liveLinkConnection = new UdpClient(42069);
+            liveLinkConnection = new UdpClient(liveLinkPort.Value);
             liveLinkRemoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
             ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
             return (true, true);
@@ -203,75 +207,88 @@ namespace VRCFT_Module___LiveLink
             };
         }
 
+        public float eyeCalc(float eyeBlink, float eyeSquint)
+        {
+            return (float) Math.Pow(0.05 + eyeBlink, 6) + eyeSquint;
+        }
+
+        public float apeCalc(float jawOpen, float mouthClose)
+        {
+            return (0.05f + jawOpen) * (float) Math.Pow(0.05 + mouthClose, 2);
+        }
+
         // The update function needs to be defined separately in case the user is running with the --vrcft-nothread launch parameter
         // Currently doing all data processing in this Update function, should probably move into TrackingData
         public void Update()
         {
-            LiveLinkTrackingDataStruct newData = ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
-            //TrackingData.Update(UnifiedTrackingData.LatestEyeData, newData);
+            LiveLinkTrackingDataStruct? newData = ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
+            if (newData is LiveLinkTrackingDataStruct d)
+                {
+                //TrackingData.Update(UnifiedTrackingData.LatestEyeData, d);
 
-            // Combined eye tracking
-            UnifiedTrackingData.LatestEyeData.Combined.Look = new Vector2((newData.left_eye.EyeYaw + newData.right_eye.EyeYaw) / 2, (newData.left_eye.EyePitch + newData.right_eye.EyePitch) / -2);
-            UnifiedTrackingData.LatestEyeData.Combined.Openness = (newData.left_eye.EyeBlink + newData.right_eye.EyeBlink) / -2;
-            UnifiedTrackingData.LatestEyeData.Combined.Widen = (newData.left_eye.EyeWide + newData.right_eye.EyeWide) / 2;
-            //UnifiedTrackingData.LatestEyeData.Combined.Squeeze = (newData.left_eye.EyeSquint + newData.right_eye.EyeSquint)/2;
+                // Combined eye tracking
+                UnifiedTrackingData.LatestEyeData.Combined.Look = new Vector2((d.left_eye.EyeYaw + d.right_eye.EyeYaw) / 2, (d.left_eye.EyePitch + d.right_eye.EyePitch) / -2);
+                UnifiedTrackingData.LatestEyeData.Combined.Openness = 1 - ((eyeCalc(d.left_eye.EyeBlink, d.left_eye.EyeSquint) + eyeCalc(d.right_eye.EyeBlink, d.right_eye.EyeSquint)) / 2);
+                UnifiedTrackingData.LatestEyeData.Combined.Widen = (d.left_eye.EyeWide + d.right_eye.EyeWide) / 2;
+                //UnifiedTrackingData.LatestEyeData.Combined.Squeeze = (d.left_eye.EyeSquint + d.right_eye.EyeSquint)/2;
 
-            // Left eye tracking
-            UnifiedTrackingData.LatestEyeData.Left.Look = new Vector2(newData.left_eye.EyeYaw, -1 * newData.left_eye.EyePitch);
-            UnifiedTrackingData.LatestEyeData.Left.Openness = -1*newData.left_eye.EyeBlink;
-            UnifiedTrackingData.LatestEyeData.Left.Widen = newData.left_eye.EyeWide;
-            //UnifiedTrackingData.LatestEyeData.Left.Squeeze = newData.left_eye.EyeSquint;
+                // Left eye tracking
+                UnifiedTrackingData.LatestEyeData.Left.Look = new Vector2(d.left_eye.EyeYaw, -1 * d.left_eye.EyePitch);
+                UnifiedTrackingData.LatestEyeData.Left.Openness = 1 - eyeCalc(d.left_eye.EyeBlink, d.left_eye.EyeSquint);
+                UnifiedTrackingData.LatestEyeData.Left.Widen = d.left_eye.EyeWide;
+                //UnifiedTrackingData.LatestEyeData.Left.Squeeze = d.left_eye.EyeSquint;
 
-            // Right eye tracking
-            UnifiedTrackingData.LatestEyeData.Right.Look = new Vector2(newData.right_eye.EyeYaw, -1 * newData.right_eye.EyePitch);
-            UnifiedTrackingData.LatestEyeData.Right.Openness = -1*newData.right_eye.EyeBlink;
-            UnifiedTrackingData.LatestEyeData.Right.Widen = newData.right_eye.EyeWide;
-            //UnifiedTrackingData.LatestEyeData.Right.Squeeze = newData.right_eye.EyeSquint;
+                // Right eye tracking
+                UnifiedTrackingData.LatestEyeData.Right.Look = new Vector2(d.right_eye.EyeYaw, -1 * d.right_eye.EyePitch);
+                UnifiedTrackingData.LatestEyeData.Right.Openness = 1 - eyeCalc(d.right_eye.EyeBlink, d.right_eye.EyeSquint);
+                UnifiedTrackingData.LatestEyeData.Right.Widen = d.right_eye.EyeWide;
+                //UnifiedTrackingData.LatestEyeData.Right.Squeeze = d.right_eye.EyeSquint;
 
-            // Lip tracking
-            Dictionary<LipShape_v2, float> lipShapes = new Dictionary<LipShape_v2, float>{
-                { LipShape_v2.JawRight, newData.lips.JawRight }, // +JawX
-                { LipShape_v2.JawLeft, newData.lips.JawLeft }, // -JawX
-                { LipShape_v2.JawForward, newData.lips.JawForward },
-                { LipShape_v2.JawOpen, newData.lips.JawOpen },
-                { LipShape_v2.MouthApeShape, 0 },
-                { LipShape_v2.MouthUpperRight, newData.lips.MouthRight }, // +MouthUpper
-                { LipShape_v2.MouthUpperLeft, newData.lips.MouthLeft }, // -MouthUpper
-                { LipShape_v2.MouthLowerRight, newData.lips.MouthRight }, // +MouthLower
-                { LipShape_v2.MouthLowerLeft, newData.lips.MouthLeft }, // -MouthLower
-                { LipShape_v2.MouthUpperOverturn, newData.lips.MouthShrugUpper },
-                { LipShape_v2.MouthLowerOverturn, newData.lips.MouthShrugLower },
-                { LipShape_v2.MouthPout, 0 },
-                { LipShape_v2.MouthSmileRight, newData.lips.MouthSmileRight }, // +SmileSadRight
-                { LipShape_v2.MouthSmileLeft, newData.lips.MouthSmileLeft }, // +SmileSadLeft
-                { LipShape_v2.MouthSadRight, newData.lips.MouthFrownRight }, // -SmileSadRight
-                { LipShape_v2.MouthSadLeft, newData.lips.MouthFrownLeft }, // -SmileSadLeft
-                { LipShape_v2.CheekPuffRight, newData.lips.CheekPuff },
-                { LipShape_v2.CheekPuffLeft, newData.lips.CheekPuff },
-                { LipShape_v2.CheekSuck, 0 },
-                { LipShape_v2.MouthUpperUpRight, newData.lips.MouthUpperUpRight },
-                { LipShape_v2.MouthUpperUpLeft, newData.lips.MouthUpperUpLeft },
-                { LipShape_v2.MouthLowerDownRight, newData.lips.MouthLowerDownRight },
-                { LipShape_v2.MouthLowerDownLeft, newData.lips.MouthLowerDownLeft },
-                { LipShape_v2.MouthUpperInside, newData.lips.MouthRollUpper },
-                { LipShape_v2.MouthLowerInside, newData.lips.MouthRollLower },
-                { LipShape_v2.MouthLowerOverlay, 0 },
-                { LipShape_v2.TongueLongStep1, newData.lips.TongueOut },
-                { LipShape_v2.TongueLongStep2, newData.lips.TongueOut },
-                { LipShape_v2.TongueDown, 0 }, // -TongueY
-                { LipShape_v2.TongueUp, 0 }, // +TongueY
-                { LipShape_v2.TongueRight, 0 }, // +TongueX
-                { LipShape_v2.TongueLeft, 0 }, // -TongueX
-                { LipShape_v2.TongueRoll, 0 },
-                { LipShape_v2.TongueUpLeftMorph, 0 },
-                { LipShape_v2.TongueUpRightMorph, 0 },
-                { LipShape_v2.TongueDownLeftMorph, 0 },
-                { LipShape_v2.TongueDownRightMorph, 0 },
-            };
+                // Lip tracking
+                Dictionary<LipShape_v2, float> lipShapes = new Dictionary<LipShape_v2, float>{
+                    { LipShape_v2.JawRight, d.lips.JawRight }, // +JawX
+                    { LipShape_v2.JawLeft, d.lips.JawLeft }, // -JawX
+                    { LipShape_v2.JawForward, d.lips.JawForward },
+                    { LipShape_v2.JawOpen, d.lips.JawOpen },
+                    { LipShape_v2.MouthApeShape, apeCalc(d.lips.JawOpen, d.lips.MouthClose) },
+                    { LipShape_v2.MouthUpperRight, d.lips.MouthRight }, // +MouthUpper
+                    { LipShape_v2.MouthUpperLeft, d.lips.MouthLeft }, // -MouthUpper
+                    { LipShape_v2.MouthLowerRight, d.lips.MouthRight }, // +MouthLower
+                    { LipShape_v2.MouthLowerLeft, d.lips.MouthLeft }, // -MouthLower
+                    { LipShape_v2.MouthUpperOverturn, d.lips.MouthShrugUpper },
+                    { LipShape_v2.MouthLowerOverturn, d.lips.MouthShrugLower },
+                    { LipShape_v2.MouthPout, (d.lips.MouthFunnel + d.lips.MouthPucker) / 2 },
+                    { LipShape_v2.MouthSmileRight, d.lips.MouthSmileRight }, // +SmileSadRight
+                    { LipShape_v2.MouthSmileLeft, d.lips.MouthSmileLeft }, // +SmileSadLeft
+                    { LipShape_v2.MouthSadRight, d.lips.MouthFrownRight }, // -SmileSadRight
+                    { LipShape_v2.MouthSadLeft, d.lips.MouthFrownLeft }, // -SmileSadLeft
+                    { LipShape_v2.CheekPuffRight, d.lips.CheekPuff },
+                    { LipShape_v2.CheekPuffLeft, d.lips.CheekPuff },
+                    { LipShape_v2.CheekSuck, 0 },
+                    { LipShape_v2.MouthUpperUpRight, d.lips.MouthUpperUpRight },
+                    { LipShape_v2.MouthUpperUpLeft, d.lips.MouthUpperUpLeft },
+                    { LipShape_v2.MouthLowerDownRight, d.lips.MouthLowerDownRight },
+                    { LipShape_v2.MouthLowerDownLeft, d.lips.MouthLowerDownLeft },
+                    { LipShape_v2.MouthUpperInside, d.lips.MouthRollUpper },
+                    { LipShape_v2.MouthLowerInside, d.lips.MouthRollLower },
+                    { LipShape_v2.MouthLowerOverlay, 0 },
+                    { LipShape_v2.TongueLongStep1, d.lips.TongueOut },
+                    { LipShape_v2.TongueLongStep2, d.lips.TongueOut },
+                    { LipShape_v2.TongueDown, 0 }, // -TongueY
+                    { LipShape_v2.TongueUp, 0 }, // +TongueY
+                    { LipShape_v2.TongueRight, 0 }, // +TongueX
+                    { LipShape_v2.TongueLeft, 0 }, // -TongueX
+                    { LipShape_v2.TongueRoll, 0 },
+                    { LipShape_v2.TongueUpLeftMorph, 0 },
+                    { LipShape_v2.TongueUpRightMorph, 0 },
+                    { LipShape_v2.TongueDownLeftMorph, 0 },
+                    { LipShape_v2.TongueDownRightMorph, 0 },
+                };
 
-            // Brow tracking??
+                // Brow tracking??
 
-            UnifiedTrackingData.LatestLipShapes = lipShapes;
+                UnifiedTrackingData.LatestLipShapes = lipShapes;
+            }
         }
 
         // A chance to de-initialize everything. This runs synchronously inside main game thread. Do not touch any Unity objects here.
@@ -287,7 +304,7 @@ namespace VRCFT_Module___LiveLink
         public bool SupportsLip => true;
 
         // Read the data from the LiveLink UDP stream and place it into a LiveLinkTrackingDataStruct
-        private LiveLinkTrackingDataStruct ReadData(UdpClient liveLinkConnection, IPEndPoint liveLinkRemoteEndpoint)
+        private LiveLinkTrackingDataStruct? ReadData(UdpClient liveLinkConnection, IPEndPoint liveLinkRemoteEndpoint)
         {
             Dictionary<string, float> values = new Dictionary<string, float>();
 
@@ -336,9 +353,7 @@ namespace VRCFT_Module___LiveLink
             }
             else
             {
-                // If tracking cuts out, it might be a good idea for it to just freeze in place instead of everything getting set to
-                // an empty struct
-                return new LiveLinkTrackingDataStruct();
+                return null;
             }
         }
 
