@@ -36,7 +36,7 @@ You need an IPhone X/XS/XR or newer, 12.9-inch IPad Pro 3rd gen or newer, or 11-
 As with all VRChat mods, modifying the game client can result in account termination, be it temporary or permanent. While this mod doesn't ruin the experience for others, using it may still be a bannable offence.<br>
 **USE AT YOUR OWN RISK**. I will not be held responsible for any punishments you may recieve for using this mod.
 
-## Other Useful Tools:
+## 🧰 Other Useful Tools:
 
 If you would like to bring your head movements into VR, and maybe hand movements as well with virtual controllers, check out [Driver4VR](https://store.steampowered.com/app/1366950/Driver4VR/). I have also worked on a module for [opentrack](https://github.com/opentrack/opentrack) that allows you to utilize the head rotation data from LiveLink to move the virtual headset, though it is not yet published.
 
