@@ -82,33 +82,114 @@ namespace VRCFT_Module___LiveLink
         public LiveLinkTrackingDataEye right_eye;
         public LiveLinkTrackingDataLips lips;
         public LiveLinkTrackingDataBrow brow;
+
+        public LiveLinkTrackingDataEye getCombined()
+        {
+            LiveLinkTrackingDataEye combined = new LiveLinkTrackingDataEye();
+            foreach (var field in typeof(LiveLinkTrackingDataEye).GetFields(BindingFlags.Instance |
+                                                                            BindingFlags.NonPublic |
+                                                                            BindingFlags.Public))
+            {
+                object temp = combined;
+                field.SetValue(temp, ((float) field.GetValue(left_eye) + (float) field.GetValue(right_eye)) / 2);
+                combined = (LiveLinkTrackingDataEye) temp;
+            }
+            return combined;
+        }
     }
 
     // This class contains the overrides for any VRCFT Tracking Data struct functions
-    // This class is unusead right now, probably a much better idea to move what I'm doing in LiveLinkTrackinModule.Update
-    // to here.
     public static class TrackingData
     {
-        // This function parses the external module's single-eye data into a VRCFT-Parseable format
-        public static void Update(this Eye data, LiveLinkTrackingDataEye external)
+        // Map the EyeBlink and EyeSquint LiveLink blendshapes to the openness SRanipal blendshape
+        private static float eyeCalc(float eyeBlink, float eyeSquint)
         {
-            data.Look = new Vector2(external.EyeYaw, external.EyePitch);
-            data.Openness = external.EyeBlink;
+            return (float)Math.Pow(0.05 + eyeBlink, 6) + eyeSquint;
         }
 
-        // This function parses the external module's full-data data into multiple VRCFT-Parseable single-eye structs
-        public static void Update(this EyeTrackingData data, LiveLinkTrackingDataStruct external)
+        // Map the JawOpen and MouthClose LiveLink blendshapes to the apeShape SRanipal blendshape
+        private static float apeCalc(float jawOpen, float mouthClose)
+        {
+            return (0.05f + jawOpen) * (float)Math.Pow(0.05 + mouthClose, 2);
+        }
+
+        // Map the LiveLink module's single-eye data to the SRanipal API
+        private static void Update(ref Eye data, LiveLinkTrackingDataEye external)
+        {
+            data.Look = new Vector2(external.EyeYaw, -1 * external.EyePitch);
+            data.Openness = 1 - eyeCalc(external.EyeBlink, external.EyeSquint);
+            data.Widen = external.EyeWide;
+            //data.Squeeze = data.right_eye.EyeSquint;
+        }
+
+        // Map the LiveLink module's lip tracking data to the SRanipal API
+        private static void Update(ref Dictionary<LipShape_v2, float> data,  LiveLinkTrackingDataLips external)
+        {
+            if (!UnifiedLibManager.LipEnabled) return;
+
+            Dictionary<LipShape_v2, float> lipShapes = new Dictionary<LipShape_v2, float>{
+                    { LipShape_v2.JawRight, external.JawRight }, // +JawX
+                    { LipShape_v2.JawLeft, external.JawLeft }, // -JawX
+                    { LipShape_v2.JawForward, external.JawForward },
+                    { LipShape_v2.JawOpen, external.JawOpen },
+                    { LipShape_v2.MouthApeShape, apeCalc(external.JawOpen, external.MouthClose) },
+                    { LipShape_v2.MouthUpperRight, external.MouthRight }, // +MouthUpper
+                    { LipShape_v2.MouthUpperLeft, external.MouthLeft }, // -MouthUpper
+                    { LipShape_v2.MouthLowerRight, external.MouthRight }, // +MouthLower
+                    { LipShape_v2.MouthLowerLeft, external.MouthLeft }, // -MouthLower
+                    { LipShape_v2.MouthUpperOverturn, external.MouthShrugUpper },
+                    { LipShape_v2.MouthLowerOverturn, external.MouthShrugLower },
+                    { LipShape_v2.MouthPout, (external.MouthFunnel + external.MouthPucker) / 2 },
+                    { LipShape_v2.MouthSmileRight, external.MouthSmileRight }, // +SmileSadRight
+                    { LipShape_v2.MouthSmileLeft, external.MouthSmileLeft }, // +SmileSadLeft
+                    { LipShape_v2.MouthSadRight, external.MouthFrownRight }, // -SmileSadRight
+                    { LipShape_v2.MouthSadLeft, external.MouthFrownLeft }, // -SmileSadLeft
+                    { LipShape_v2.CheekPuffRight, external.CheekPuff },
+                    { LipShape_v2.CheekPuffLeft, external.CheekPuff },
+                    { LipShape_v2.CheekSuck, 0 },
+                    { LipShape_v2.MouthUpperUpRight, external.MouthUpperUpRight },
+                    { LipShape_v2.MouthUpperUpLeft, external.MouthUpperUpLeft },
+                    { LipShape_v2.MouthLowerDownRight, external.MouthLowerDownRight },
+                    { LipShape_v2.MouthLowerDownLeft, external.MouthLowerDownLeft },
+                    { LipShape_v2.MouthUpperInside, external.MouthRollUpper },
+                    { LipShape_v2.MouthLowerInside, external.MouthRollLower },
+                    { LipShape_v2.MouthLowerOverlay, 0 },
+                    { LipShape_v2.TongueLongStep1, external.TongueOut },
+                    { LipShape_v2.TongueLongStep2, external.TongueOut },
+                    { LipShape_v2.TongueDown, 0 }, // -TongueY
+                    { LipShape_v2.TongueUp, 0 }, // +TongueY
+                    { LipShape_v2.TongueRight, 0 }, // +TongueX
+                    { LipShape_v2.TongueLeft, 0 }, // -TongueX
+                    { LipShape_v2.TongueRoll, 0 },
+                    { LipShape_v2.TongueUpLeftMorph, 0 },
+                    { LipShape_v2.TongueUpRightMorph, 0 },
+                    { LipShape_v2.TongueDownLeftMorph, 0 },
+                    { LipShape_v2.TongueDownRightMorph, 0 },
+                };
+
+            data = lipShapes;
+        }
+
+        // Map the LiveLink module's eye data to the SRanipal API
+        private static void Update(ref EyeTrackingData data, LiveLinkTrackingDataStruct external)
         {
             if (!UnifiedLibManager.EyeEnabled) return;
-            MelonLogger.Msg("Left Eye Blink: " + external.left_eye.EyeBlink);
-            data.Right.Update(external.left_eye);
-            data.Left.Update(external.right_eye);
+
+            Update(ref data.Right, external.right_eye);
+            Update(ref data.Left, external.left_eye);
+            Update(ref data.Combined, external.getCombined());
+        }
+
+        // Map the LiveLink module's full data to the SRanipal API
+        public static void Update(LiveLinkTrackingDataStruct external)
+        {
+            Update(ref UnifiedTrackingData.LatestEyeData, external);
+            Update(ref UnifiedTrackingData.LatestLipShapes, external.lips);
         }
     }
     public class LiveLinkTrackingModule : ITrackingModule
     {
-        // The proper names of each ARKit blendshape (Note most eyes are "Eye___[Left/Right]" while
-        // pitch/yaw/roll are "[Left/Right]Eye___")
+        // The proper names of each ARKit blendshape
         public static readonly string[] LiveLinkNames = {
             "EyeBlinkLeft",
             "EyeLookDownLeft",
@@ -165,12 +246,12 @@ namespace VRCFT_Module___LiveLink
             "HeadYaw",
             "HeadPitch",
             "HeadRoll",
-            "LeftEyeYaw",
-            "LeftEyePitch",
-            "LeftEyeRoll",
-            "RightEyeYaw",
-            "RightEyePitch",
-            "RightEyeRoll"};
+            "EyeYawLeft", // LeftEyeYaw
+            "EyePitchLeft", // LeftEyePitch
+            "EyeRollLeft", // LeftEyeRoll
+            "EyeYawRight", // RightEyeYaw
+            "EyePitchRight", // RightEyePitch
+            "EyeRollRight"}; // RightEyeRoll
 
         private static CancellationTokenSource _cancellationToken;
         private static MelonPreferences_Category liveLinkCategory;
@@ -207,16 +288,6 @@ namespace VRCFT_Module___LiveLink
             };
         }
 
-        public float eyeCalc(float eyeBlink, float eyeSquint)
-        {
-            return (float) Math.Pow(0.05 + eyeBlink, 6) + eyeSquint;
-        }
-
-        public float apeCalc(float jawOpen, float mouthClose)
-        {
-            return (0.05f + jawOpen) * (float) Math.Pow(0.05 + mouthClose, 2);
-        }
-
         // The update function needs to be defined separately in case the user is running with the --vrcft-nothread launch parameter
         // Currently doing all data processing in this Update function, should probably move into TrackingData
         public void Update()
@@ -224,70 +295,7 @@ namespace VRCFT_Module___LiveLink
             LiveLinkTrackingDataStruct? newData = ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
             if (newData is LiveLinkTrackingDataStruct d)
                 {
-                //TrackingData.Update(UnifiedTrackingData.LatestEyeData, d);
-
-                // Combined eye tracking
-                UnifiedTrackingData.LatestEyeData.Combined.Look = new Vector2((d.left_eye.EyeYaw + d.right_eye.EyeYaw) / 2, (d.left_eye.EyePitch + d.right_eye.EyePitch) / -2);
-                UnifiedTrackingData.LatestEyeData.Combined.Openness = 1 - ((eyeCalc(d.left_eye.EyeBlink, d.left_eye.EyeSquint) + eyeCalc(d.right_eye.EyeBlink, d.right_eye.EyeSquint)) / 2);
-                UnifiedTrackingData.LatestEyeData.Combined.Widen = (d.left_eye.EyeWide + d.right_eye.EyeWide) / 2;
-                //UnifiedTrackingData.LatestEyeData.Combined.Squeeze = (d.left_eye.EyeSquint + d.right_eye.EyeSquint)/2;
-
-                // Left eye tracking
-                UnifiedTrackingData.LatestEyeData.Left.Look = new Vector2(d.left_eye.EyeYaw, -1 * d.left_eye.EyePitch);
-                UnifiedTrackingData.LatestEyeData.Left.Openness = 1 - eyeCalc(d.left_eye.EyeBlink, d.left_eye.EyeSquint);
-                UnifiedTrackingData.LatestEyeData.Left.Widen = d.left_eye.EyeWide;
-                //UnifiedTrackingData.LatestEyeData.Left.Squeeze = d.left_eye.EyeSquint;
-
-                // Right eye tracking
-                UnifiedTrackingData.LatestEyeData.Right.Look = new Vector2(d.right_eye.EyeYaw, -1 * d.right_eye.EyePitch);
-                UnifiedTrackingData.LatestEyeData.Right.Openness = 1 - eyeCalc(d.right_eye.EyeBlink, d.right_eye.EyeSquint);
-                UnifiedTrackingData.LatestEyeData.Right.Widen = d.right_eye.EyeWide;
-                //UnifiedTrackingData.LatestEyeData.Right.Squeeze = d.right_eye.EyeSquint;
-
-                // Lip tracking
-                Dictionary<LipShape_v2, float> lipShapes = new Dictionary<LipShape_v2, float>{
-                    { LipShape_v2.JawRight, d.lips.JawRight }, // +JawX
-                    { LipShape_v2.JawLeft, d.lips.JawLeft }, // -JawX
-                    { LipShape_v2.JawForward, d.lips.JawForward },
-                    { LipShape_v2.JawOpen, d.lips.JawOpen },
-                    { LipShape_v2.MouthApeShape, apeCalc(d.lips.JawOpen, d.lips.MouthClose) },
-                    { LipShape_v2.MouthUpperRight, d.lips.MouthRight }, // +MouthUpper
-                    { LipShape_v2.MouthUpperLeft, d.lips.MouthLeft }, // -MouthUpper
-                    { LipShape_v2.MouthLowerRight, d.lips.MouthRight }, // +MouthLower
-                    { LipShape_v2.MouthLowerLeft, d.lips.MouthLeft }, // -MouthLower
-                    { LipShape_v2.MouthUpperOverturn, d.lips.MouthShrugUpper },
-                    { LipShape_v2.MouthLowerOverturn, d.lips.MouthShrugLower },
-                    { LipShape_v2.MouthPout, (d.lips.MouthFunnel + d.lips.MouthPucker) / 2 },
-                    { LipShape_v2.MouthSmileRight, d.lips.MouthSmileRight }, // +SmileSadRight
-                    { LipShape_v2.MouthSmileLeft, d.lips.MouthSmileLeft }, // +SmileSadLeft
-                    { LipShape_v2.MouthSadRight, d.lips.MouthFrownRight }, // -SmileSadRight
-                    { LipShape_v2.MouthSadLeft, d.lips.MouthFrownLeft }, // -SmileSadLeft
-                    { LipShape_v2.CheekPuffRight, d.lips.CheekPuff },
-                    { LipShape_v2.CheekPuffLeft, d.lips.CheekPuff },
-                    { LipShape_v2.CheekSuck, 0 },
-                    { LipShape_v2.MouthUpperUpRight, d.lips.MouthUpperUpRight },
-                    { LipShape_v2.MouthUpperUpLeft, d.lips.MouthUpperUpLeft },
-                    { LipShape_v2.MouthLowerDownRight, d.lips.MouthLowerDownRight },
-                    { LipShape_v2.MouthLowerDownLeft, d.lips.MouthLowerDownLeft },
-                    { LipShape_v2.MouthUpperInside, d.lips.MouthRollUpper },
-                    { LipShape_v2.MouthLowerInside, d.lips.MouthRollLower },
-                    { LipShape_v2.MouthLowerOverlay, 0 },
-                    { LipShape_v2.TongueLongStep1, d.lips.TongueOut },
-                    { LipShape_v2.TongueLongStep2, d.lips.TongueOut },
-                    { LipShape_v2.TongueDown, 0 }, // -TongueY
-                    { LipShape_v2.TongueUp, 0 }, // +TongueY
-                    { LipShape_v2.TongueRight, 0 }, // +TongueX
-                    { LipShape_v2.TongueLeft, 0 }, // -TongueX
-                    { LipShape_v2.TongueRoll, 0 },
-                    { LipShape_v2.TongueUpLeftMorph, 0 },
-                    { LipShape_v2.TongueUpRightMorph, 0 },
-                    { LipShape_v2.TongueDownLeftMorph, 0 },
-                    { LipShape_v2.TongueDownRightMorph, 0 },
-                };
-
-                // Brow tracking??
-
-                UnifiedTrackingData.LatestLipShapes = lipShapes;
+                TrackingData.Update(d);
             }
         }
 
@@ -311,9 +319,10 @@ namespace VRCFT_Module___LiveLink
             try
             {
                 // Grab the packet
+                // TODO: This just blocks and waits to receive, are we sure this is the freshest packet?
                 Byte[] recieveBytes = liveLinkConnection.Receive(ref liveLinkRemoteEndpoint);
 
-                // There is a bunch of static data at the beginning of the packet, is may be variable length because it includes phone name
+                // There is a bunch of static data at the beginning of the packet, it may be variable length because it includes phone name
                 // So grab the last 244 bytes of the packet sent using some Linq magic, since that's where our blendshapes live
                 IEnumerable<Byte> trimmedBytes = recieveBytes.Skip(Math.Max(0, recieveBytes.Count() - 244));
 
@@ -362,24 +371,15 @@ namespace VRCFT_Module___LiveLink
         {
             LiveLinkTrackingDataStruct processedData = new LiveLinkTrackingDataStruct();
 
-            // For eacch of the eye tracking blendshapes
+            // For each of the eye tracking blendshapes
             foreach (var field in typeof(LiveLinkTrackingDataEye).GetFields(BindingFlags.Instance |
                                                                             BindingFlags.NonPublic |
                                                                             BindingFlags.Public))
             {
                 // Eye pitch, yaw, and roll have left/right at the start while all other eye fields have them at the end for some reason.
                 // I could just rename my blendshapes to make this a lot easier but I wanted them to still match ARKit names
-                string leftName, rightName = "";
-                if (field.Name.Contains("Pitch") || field.Name.Contains("Yaw") || field.Name.Contains("Roll"))
-                {
-                    leftName = "Left" + field.Name;
-                    rightName = "Right" + field.Name;
-                }
-                else
-                {
-                    leftName = field.Name + "Left";
-                    rightName = field.Name + "Right";
-                }
+                string leftName = field.Name + "Left";
+                string rightName = field.Name + "Right";
 
                 // Values have to be boxed before they're set otherwise it won't actually get written
                 object tempLeft = processedData.left_eye;
