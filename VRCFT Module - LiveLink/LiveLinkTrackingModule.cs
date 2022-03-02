@@ -5,7 +5,6 @@ using System.Net;
 using System.Net.Sockets;
 using System.Reflection;
 using System.Threading;
-using MelonLoader;
 using ViveSR.anipal.Lip;
 using VRCFaceTracking;
 using VRCFaceTracking.Params;
@@ -254,8 +253,6 @@ namespace VRCFT_Module___LiveLink
             "EyeRollRight"}; // RightEyeRoll
 
         private static CancellationTokenSource _cancellationToken;
-        private static MelonPreferences_Category liveLinkCategory;
-        private static MelonPreferences_Entry<int> liveLinkPort;
 
         public UdpClient liveLinkConnection;
         public IPEndPoint liveLinkRemoteEndpoint;
@@ -263,12 +260,10 @@ namespace VRCFT_Module___LiveLink
         // Starts listening and waits for the first packet to come in to initialize
         public (bool eyeSuccess, bool lipSuccess) Initialize(bool eye, bool lip)
         {
-            MelonLogger.Msg("Initializing Live Link Tracking module");
-            liveLinkCategory = MelonPreferences.CreateCategory("VRCFT LiveLink");
-            liveLinkPort = liveLinkCategory.CreateEntry("LiveLinkPort", 11111);
+            Logger.Msg("Initializing Live Link Tracking module");
             _cancellationToken?.Cancel();
             UnifiedTrackingData.LatestEyeData.SupportsImage = false;
-            liveLinkConnection = new UdpClient(liveLinkPort.Value);
+            liveLinkConnection = new UdpClient(11111);
             liveLinkRemoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
             ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
             return (true, true);
@@ -305,7 +300,7 @@ namespace VRCFT_Module___LiveLink
             _cancellationToken.Cancel();
             _cancellationToken.Dispose();
             liveLinkConnection.Close();
-            MelonLogger.Msg("LiveLink Teardown");
+            Logger.Msg("LiveLink Teardown");
         }
 
         public bool SupportsEye => true;
@@ -343,16 +338,16 @@ namespace VRCFT_Module___LiveLink
 
                 //// Logging to spam console with each blendshape every update
                 //var lines = values.Select(kvp => kvp.Key + ": " + kvp.Value.ToString());
-                //MelonLogger.Msg("This is the message you received " +
+                //Logger.Msg("This is the message you received " +
                 //               string.Join(Environment.NewLine, lines));
-                //MelonLogger.Msg("This message was sent from " +
+                //Logger.Msg("This message was sent from " +
                 //                            liveLinkRemoteEndpoint.Address.ToString() +
                 //                            " on their port number " +
                 //                            liveLinkRemoteEndpoint.Port.ToString());
             }
             catch (Exception e)
             {
-                MelonLogger.Msg(e.ToString());
+                Logger.Msg(e.ToString());
             }
 
             // Check that we got all 61 values before we go processing things
