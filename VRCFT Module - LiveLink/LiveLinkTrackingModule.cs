@@ -11,92 +11,6 @@ using VRCFaceTracking.Params;
 
 namespace VRCFT_Module___LiveLink
 {
-    // Live Link Single-Eye tracking data
-    public struct LiveLinkTrackingDataEye
-    {
-        public float EyeBlink;
-        public float EyeLookDown;
-        public float EyeLookIn;
-        public float EyeLookOut;
-        public float EyeLookUp;
-        public float EyeSquint;
-        public float EyeWide;
-        public float EyePitch;
-        public float EyeYaw;
-        public float EyeRoll;
-    }
-
-    // Live Link lip tracking data
-    public struct LiveLinkTrackingDataLips
-    {
-        public float JawForward;
-        public float JawLeft;
-        public float JawRight;
-        public float JawOpen;
-        public float MouthClose;
-        public float MouthFunnel;
-        public float MouthPucker;
-        public float MouthLeft;
-        public float MouthRight;
-        public float MouthSmileLeft;
-        public float MouthSmileRight;
-        public float MouthFrownLeft;
-        public float MouthFrownRight;
-        public float MouthDimpleLeft;
-        public float MouthDimpleRight;
-        public float MouthStretchLeft;
-        public float MouthStretchRight;
-        public float MouthRollLower;
-        public float MouthRollUpper;
-        public float MouthShrugLower;
-        public float MouthShrugUpper;
-        public float MouthPressLeft;
-        public float MouthPressRight;
-        public float MouthLowerDownLeft;
-        public float MouthLowerDownRight;
-        public float MouthUpperUpLeft;
-        public float MouthUpperUpRight;
-        public float CheekPuff;
-        public float CheekSquintLeft;
-        public float CheekSquintRight;
-        public float NoseSneerLeft;
-        public float NoseSneerRight;
-        public float TongueOut;
-    }
-
-    // Live Link brow tracking data
-    public struct LiveLinkTrackingDataBrow
-    {
-        public float BrowDownLeft;
-        public float BrowDownRight;
-        public float BrowInnerUp;
-        public float BrowOuterUpLeft;
-        public float BrowOuterUpRight;
-    }
-
-    // All Live Link tracking data
-    public struct LiveLinkTrackingDataStruct
-    {
-        public LiveLinkTrackingDataEye left_eye;
-        public LiveLinkTrackingDataEye right_eye;
-        public LiveLinkTrackingDataLips lips;
-        public LiveLinkTrackingDataBrow brow;
-
-        public LiveLinkTrackingDataEye getCombined()
-        {
-            LiveLinkTrackingDataEye combined = new LiveLinkTrackingDataEye();
-            foreach (var field in typeof(LiveLinkTrackingDataEye).GetFields(BindingFlags.Instance |
-                                                                            BindingFlags.NonPublic |
-                                                                            BindingFlags.Public))
-            {
-                object temp = combined;
-                field.SetValue(temp, ((float) field.GetValue(left_eye) + (float) field.GetValue(right_eye)) / 2);
-                combined = (LiveLinkTrackingDataEye) temp;
-            }
-            return combined;
-        }
-    }
-
     // This class contains the overrides for any VRCFT Tracking Data struct functions
     public static class TrackingData
     {
@@ -188,70 +102,6 @@ namespace VRCFT_Module___LiveLink
     }
     public class LiveLinkTrackingModule : ITrackingModule
     {
-        // The proper names of each ARKit blendshape
-        public static readonly string[] LiveLinkNames = {
-            "EyeBlinkLeft",
-            "EyeLookDownLeft",
-            "EyeLookInLeft",
-            "EyeLookOutLeft",
-            "EyeLookUpLeft",
-            "EyeSquintLeft",
-            "EyeWideLeft",
-            "EyeBlinkRight",
-            "EyeLookDownRight",
-            "EyeLookInRight",
-            "EyeLookOutRight",
-            "EyeLookUpRight",
-            "EyeSquintRight",
-            "EyeWideRight",
-            "JawForward",
-            "JawLeft",
-            "JawRight",
-            "JawOpen",
-            "MouthClose",
-            "MouthFunnel",
-            "MouthPucker",
-            "MouthLeft",
-            "MouthRight",
-            "MouthSmileLeft",
-            "MouthSmileRight",
-            "MouthFrownLeft",
-            "MouthFrownRight",
-            "MouthDimpleLeft",
-            "MouthDimpleRight",
-            "MouthStretchLeft",
-            "MouthStretchRight",
-            "MouthRollLower",
-            "MouthRollUpper",
-            "MouthShrugLower",
-            "MouthShrugUpper",
-            "MouthPressLeft",
-            "MouthPressRight",
-            "MouthLowerDownLeft",
-            "MouthLowerDownRight",
-            "MouthUpperUpLeft",
-            "MouthUpperUpRight",
-            "BrowDownLeft",
-            "BrowDownRight",
-            "BrowInnerUp",
-            "BrowOuterUpLeft",
-            "BrowOuterUpRight",
-            "CheekPuff",
-            "CheekSquintLeft",
-            "CheekSquintRight",
-            "NoseSneerLeft",
-            "NoseSneerRight",
-            "TongueOut",
-            "HeadYaw",
-            "HeadPitch",
-            "HeadRoll",
-            "EyeYawLeft", // LeftEyeYaw
-            "EyePitchLeft", // LeftEyePitch
-            "EyeRollLeft", // LeftEyeRoll
-            "EyeYawRight", // RightEyeYaw
-            "EyePitchRight", // RightEyePitch
-            "EyeRollRight"}; // RightEyeRoll
-
         private static CancellationTokenSource _cancellationToken;
 
         public UdpClient liveLinkConnection;
@@ -263,7 +113,7 @@ namespace VRCFT_Module___LiveLink
             Logger.Msg("Initializing Live Link Tracking module");
             _cancellationToken?.Cancel();
             UnifiedTrackingData.LatestEyeData.SupportsImage = false;
-            liveLinkConnection = new UdpClient(11111);
+            liveLinkConnection = new UdpClient(Constants.Port);
             liveLinkRemoteEndpoint = new IPEndPoint(IPAddress.Any, 0);
             ReadData(liveLinkConnection, liveLinkRemoteEndpoint);
             return (true, true);
@@ -333,17 +183,8 @@ namespace VRCFT_Module___LiveLink
                 {
                     // First, reverse the list because the data will be in big endian, then convert it to a float
                     item.value.Reverse();
-                    values.Add(LiveLinkNames[item.i], BitConverter.ToSingle(item.value.ToArray(), 0));
+                    values.Add(Constants.LiveLinkNames[item.i], BitConverter.ToSingle(item.value.ToArray(), 0));
                 }
-
-                //// Logging to spam console with each blendshape every update
-                //var lines = values.Select(kvp => kvp.Key + ": " + kvp.Value.ToString());
-                //Logger.Msg("This is the message you received " +
-                //               string.Join(Environment.NewLine, lines));
-                //Logger.Msg("This message was sent from " +
-                //                            liveLinkRemoteEndpoint.Address.ToString() +
-                //                            " on their port number " +
-                //                            liveLinkRemoteEndpoint.Port.ToString());
             }
             catch (Exception e)
             {
@@ -351,14 +192,11 @@ namespace VRCFT_Module___LiveLink
             }
 
             // Check that we got all 61 values before we go processing things
-            if (values.Count() == 61)
-            {  
-                return ProcessData(values);
-            }
-            else
+            if (values.Count() != 61)
             {
                 return null;
             }
+            return ProcessData(values);
         }
 
         // This is all terrible, I am almost certain that there is no need to use relfection for any of this
@@ -371,8 +209,6 @@ namespace VRCFT_Module___LiveLink
                                                                             BindingFlags.NonPublic |
                                                                             BindingFlags.Public))
             {
-                // Eye pitch, yaw, and roll have left/right at the start while all other eye fields have them at the end for some reason.
-                // I could just rename my blendshapes to make this a lot easier but I wanted them to still match ARKit names
                 string leftName = field.Name + "Left";
                 string rightName = field.Name + "Right";
 

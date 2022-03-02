@@ -4,7 +4,7 @@ This is a module for the VRCFaceTracking mod that enables you to use the FaceID 
 
 ## 💾 Installation
 
-Just drag the `VRCFT Module - LiveLink.dll` into your `Mods/VRCFTLibs` folder
+Drag the `VRCFT_Module_LiveLink.dll` into your `%AppData%\Roaming\VRCFaceTracking\CustomLibs` folder
 
 ## 🔧 Configuration
 
