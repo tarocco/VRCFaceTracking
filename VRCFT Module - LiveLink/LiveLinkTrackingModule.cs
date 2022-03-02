@@ -32,7 +32,6 @@ namespace VRCFT_Module___LiveLink
             data.Look = new Vector2(external.EyeYaw, -1 * external.EyePitch);
             data.Openness = 1 - eyeCalc(external.EyeBlink, external.EyeSquint);
             data.Widen = external.EyeWide;
-            //data.Squeeze = data.right_eye.EyeSquint;
         }
 
         // Map the LiveLink module's lip tracking data to the SRanipal API
