@@ -18,14 +18,15 @@ namespace VRCFaceTracking
         public float Openness;
         public float Widen, Squeeze;
 
-        
+        private AutoSmoothingFilter OpennessFilter;
+
         public void Update(SingleEyeData eyeData, SingleEyeExpression? expression = null)
         {
             if (eyeData.GetValidity(SingleEyeDataValidity.SINGLE_EYE_DATA_GAZE_DIRECTION_VALIDITY))
                 Look = eyeData.gaze_direction_normalized.Invert();
 
-            Openness = eyeData.eye_openness;
-            
+            Openness = OpennessFilter.Process(eyeData.eye_openness, 10f, 0.6f); // Speed and decay assumed on 10ms update period
+
             if (expression == null) return; // This is null when we use this as a combined eye, so don't try read data from it
             
             Widen = expression.Value.eye_wide;
@@ -35,7 +36,7 @@ namespace VRCFaceTracking
         public void Update(EyeExpressionState eyeState)
         {
             Look = new Vector2(eyeState.PupilCenterX-0.5f, eyeState.PupilCenterY-0.5f) * 3;
-            Openness = eyeState.Openness;
+            Openness = OpennessFilter.Process(eyeState.Openness, 10f, 0.6f);  // Speed and decay assumed on 10ms update period
             Widen = 0;
             Squeeze = 0;
         }

@@ -41,6 +41,7 @@
     <ApplicationIcon>VRCFT.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="AutoSmoothingFilter.cs" />
     <Compile Include="ConfigParser.cs" />
     <Compile Include="DependencyManager.cs" />
     <Compile Include="InputManager.cs" />
